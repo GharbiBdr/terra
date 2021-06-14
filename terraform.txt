@@ -1,0 +1,49 @@
+provider "google" {
+  project     = "gitlab-toolkit"
+  region      = "us-central1"
+  credentials = file("<>.json")
+}
+
+resource "google_cloudbuild_trigger" "filename-trigger" {
+  name     = "terra1"
+  github {
+    owner  = "gh-bdr"
+    name   = "gcp"
+    push {
+        branch = "main"
+    }
+  }
+  filename = "cloudbuild.yaml"
+}
+resource "google_cloud_run_service" "default" {
+  name     = "cloudrun"
+  location = "us-central1"
+
+  template {
+    spec {
+      containers {
+        image = "gcr.io/gitlab-toolkit/gitlab/gcp@sha256:584b99ce09fb8e137a4d1408d835eab82dc5ef69e4dfe43d8066059e8a97a5cf"
+      }
+    }
+  }
+  depends_on = [
+    google_cloudbuild_trigger.filename-trigger,
+  ]
+}
+
+data "google_iam_policy" "noauth" {
+  binding {
+    role = "roles/run.invoker"
+    members = [
+      "allUsers",
+    ]
+  }
+}
+
+resource "google_cloud_run_service_iam_policy" "noauth" {
+  location    = google_cloud_run_service.default.location
+  project     = google_cloud_run_service.default.project
+  service     = google_cloud_run_service.default.name
+
+  policy_data = data.google_iam_policy.noauth.policy_data
+}
